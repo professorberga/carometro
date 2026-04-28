@@ -1,0 +1,70 @@
+{
+  "entities": {
+    "Turma": {
+      "title": "Turma",
+      "description": "Uma turma escolar.",
+      "type": "object",
+      "properties": {
+        "nome": { "type": "string", "description": "Ex: 2º B" },
+        "serie": { "type": "string", "description": "Ex: 2º ano EM" },
+        "periodo": { "type": "string", "enum": ["Manhã", "Tarde", "Integral"] },
+        "anoLetivo": { "type": "number" },
+        "totalAlunos": { "type": "number" },
+        "criadoEm": { "type": "string", "format": "date-time" }
+      },
+      "required": ["nome", "serie", "periodo", "anoLetivo", "criadoEm"]
+    },
+    "Aluno": {
+      "title": "Aluno",
+      "description": "Dados de um aluno.",
+      "type": "object",
+      "properties": {
+        "nomeCompleto": { "type": "string" },
+        "ra": { "type": "string", "description": "Registro do Aluno (único)" },
+        "numeroChamada": { "type": "number", "description": "Número de chamada do aluno na turma" },
+        "dataNascimento": { "type": "string", "format": "date" },
+        "dataMatricula": { "type": "string", "format": "date" },
+        "turmaId": { "type": "string" },
+        "fotoUrl": { "type": "string" },
+        "fotoPath": { "type": "string" },
+        "clubeJuvenil": { "type": "string" },
+        "clubeJuvenil2": { "type": "string", "description": "Clube Juvenil 2º semestre" },
+        "eletiva": { "type": "string" },
+        "eletiva2": { "type": "string", "description": "Eletiva 2º semestre" },
+        "tutorId": { "type": "string", "description": "ID do professor tutor" },
+        "observacoes": { "type": "string" },
+        "criadoEm": { "type": "string", "format": "date-time" },
+        "atualizadoEm": { "type": "string", "format": "date-time" }
+      },
+      "required": ["nomeCompleto", "ra", "turmaId", "criadoEm"]
+    },
+    "Usuario": {
+      "title": "Usuário",
+      "description": "Perfil de usuário do sistema.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "nome": { "type": "string" },
+        "cargo": { "type": "string" },
+        "role": { "type": "string", "enum": ["gestor", "professor"] },
+        "criadoEm": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "nome", "role", "criadoEm"]
+    }
+  },
+  "firestore": {
+    "turmas": {
+      "schema": "Turma",
+      "description": "Coleção de turmas."
+    },
+    "alunos": {
+      "schema": "Aluno",
+      "description": "Coleção de alunos."
+    },
+    "usuarios": {
+      "schema": "Usuario",
+      "description": "Perfis de usuários."
+    }
+  }
+}

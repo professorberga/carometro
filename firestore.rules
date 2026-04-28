@@ -1,0 +1,118 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helper Functions ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
+    }
+
+    function isGestor() {
+      return isSignedIn() && getUserData().role == 'gestor';
+    }
+
+    function isProfessor() {
+      return isSignedIn() && getUserData().role == 'professor';
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Validation Helpers ---
+    function isValidTurma(data) {
+      return data.nome is string && data.nome.size() <= 100
+        && data.serie is string && data.serie.size() <= 100
+        && data.periodo in ['Manhã', 'Tarde', 'Integral']
+        && (data.anoLetivo is int || data.anoLetivo is number);
+    }
+
+    function isValidAluno(data) {
+      return data.nomeCompleto is string && data.nomeCompleto.size() <= 200
+        && data.ra is string && data.ra.size() <= 60
+        && (data.get('numeroChamada', 0) is int || data.get('numeroChamada', 0) is number)
+        && data.turmaId is string && data.turmaId.size() <= 128
+        && (data.get('fotoUrl', '') is string && data.get('fotoUrl', '').size() <= 2000)
+        && (data.get('clubeJuvenil', '') is string && data.get('clubeJuvenil', '').size() <= 100)
+        && (data.get('clubeJuvenil2', '') is string && data.get('clubeJuvenil2', '').size() <= 100)
+        && (data.get('eletiva', '') is string && data.get('eletiva', '').size() <= 100)
+        && (data.get('eletiva2', '') is string && data.get('eletiva2', '').size() <= 100)
+        && (data.get('tutorId', '') is string && data.get('tutorId', '').size() <= 128)
+        && (data.get('observacoes', '') is string && data.get('observacoes', '').size() <= 1000);
+    }
+
+    function isValidUser(data) {
+      return data.nome is string && data.nome.size() <= 200
+        && data.email is string && data.email.size() <= 200
+        && data.role in ['gestor', 'professor']
+        && (data.get('cargo', '') is string && data.get('cargo', '').size() <= 200);
+    }
+
+    // --- Collection Rules ---
+
+    match /usuarios/{docId} {
+      allow read: if isSignedIn();
+      allow create: if (isSignedIn() && request.auth.uid == docId) // First user/self-reg
+                  || isGestor(); // Manager adding via sheet/form
+      allow update: if isGestor() 
+                  || (isSignedIn() && request.auth.uid == docId 
+                      && (existing() == null || incoming().role == existing().role) // Can't change own role if already set
+                      && (existing() == null || incoming().email == existing().email) // Can't change own email if already set
+                      && incoming().diff(existing()).affectedKeys().hasOnly(['nome', 'cargo', 'atualizadoEm', 'uid', 'email', 'role']));
+      allow delete: if isGestor() || (isSignedIn() && existing().email == request.auth.token.email);
+    }
+
+    match /turmas/{turmaId} {
+      allow read: if isSignedIn();
+      allow create: if isGestor() 
+        && incoming().keys().hasAll(['nome', 'serie', 'periodo', 'anoLetivo', 'criadoEm'])
+        && isValidTurma(incoming())
+        && incoming().criadoEm == request.time;
+      allow update: if isGestor() 
+        && isValidTurma(incoming())
+        && incoming().criadoEm == existing().criadoEm
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['nome', 'serie', 'periodo', 'anoLetivo', 'atualizadoEm'])
+        );
+      allow delete: if isGestor();
+    }
+
+    match /alunos/{alunoId} {
+      allow read: if isSignedIn();
+      allow create: if isGestor() 
+        && incoming().keys().hasAll(['nomeCompleto', 'ra', 'turmaId', 'criadoEm'])
+        && isValidAluno(incoming())
+        && incoming().criadoEm == request.time
+        && exists(/databases/$(database)/documents/turmas/$(incoming().turmaId));
+      allow update: if isGestor() 
+        && isValidAluno(incoming())
+        && incoming().criadoEm == existing().criadoEm
+        && (incoming().turmaId == existing().turmaId || exists(/databases/$(database)/documents/turmas/$(incoming().turmaId)))
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'nomeCompleto', 'ra', 'numeroChamada', 'turmaId', 'tutorId', 
+            'dataNascimento', 'dataMatricula', 'clubeJuvenil', 'clubeJuvenil2', 
+            'eletiva', 'eletiva2', 'observacoes', 'fotoUrl', 'fotoPath', 'atualizadoEm'
+          ])
+        );
+      allow delete: if isGestor();
+    }
+  }
+}
