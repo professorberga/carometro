@@ -1,5 +1,5 @@
 'use client';
-
+  
 import Sidebar from '@/components/Sidebar';
 import MobileNav from '@/components/MobileNav';
 import ProtectedRoute from '@/components/ProtectedRoute';
