@@ -40,7 +40,7 @@ export default function ConfiguracaoPage() {
       try {
         const snap = await getDocs(collection(db, 'usuarios'));
         if (!active) return;
-        const users = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const users = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
         users.sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
         setUserList(users);
       } catch (err) {
