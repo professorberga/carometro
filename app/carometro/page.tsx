@@ -45,6 +45,17 @@ export default function CarometroPage() {
   const [selectedAluno, setSelectedAluno] = useState<Aluno | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Clear search on ESC
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && search) {
+        setSearch('');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [search]);
+
   // Fetch turmas and usuarios
   useEffect(() => {
     async function fetchData() {
@@ -65,24 +76,43 @@ export default function CarometroPage() {
     fetchData();
   }, []);
 
-  // Fetch alunos based on selected turma
+  // Fetch alunos based on selected turma OR search
   useEffect(() => {
     let active = true;
-    if (!selectedTurma) return;
-
+    
     async function load() {
+      const isSearchActive = search.trim().length > 0;
+      
+      // If we don't have a search term and no turma is selected, we have nothing to show yet
+      // unless we want to default to "All Turmas". Let's default to "All Turmas" if selectedTurma is empty.
+      
       setLoading(true);
       try {
-        const snap = await getDocs(query(collection(db, 'alunos'), where('turmaId', '==', selectedTurma)));
+        let q;
+        if (isSearchActive || !selectedTurma) {
+          // If searching or "All Turmas" selected, fetch all students
+          q = query(collection(db, 'alunos'));
+        } else {
+          // Fetch only the selected turma
+          q = query(collection(db, 'alunos'), where('turmaId', '==', selectedTurma));
+        }
+
+        const snap = await getDocs(q);
         if (!active) return;
         const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Aluno));
         
-        // Sort by number of call
-        data.sort((a, b) => {
-          const numA = a.numeroChamada ?? 999;
-          const numB = b.numeroChamada ?? 999;
-          return numA - numB;
-        });
+        // Sort
+        if (isSearchActive || !selectedTurma) {
+          // Sort by name for global lists
+          data.sort((a, b) => a.nomeCompleto.localeCompare(b.nomeCompleto));
+        } else {
+          // Sort by number of call for class lists
+          data.sort((a, b) => {
+            const numA = a.numeroChamada ?? 999;
+            const numB = b.numeroChamada ?? 999;
+            return numA - numB;
+          });
+        }
 
         setAlunos(data);
       } catch (error) {
@@ -92,9 +122,21 @@ export default function CarometroPage() {
       }
     }
     
-    load();
-    return () => { active = false; };
-  }, [selectedTurma]);
+    // Debounce search but not turma selection
+    const delay = search.length > 0 ? 500 : 0;
+    const timer = setTimeout(() => {
+      load();
+    }, delay);
+    
+    return () => { 
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [selectedTurma, search]);
+
+  const getTurmaNome = (id: string) => {
+    return turmas.find(t => t.id === id)?.nome || 'Turma...';
+  };
 
   const handleDelete = async (aluno: Aluno) => {
     if (confirm(`Tem certeza que deseja excluir o aluno ${aluno.nomeCompleto}?`)) {
@@ -138,18 +180,30 @@ export default function CarometroPage() {
                 onChange={(e) => setSelectedTurma(e.target.value)}
                 className="w-full sm:w-40 md:w-48 p-2.5 bg-gray-50 border border-gray-100 rounded-2xl text-xs focus:ring-4 focus:ring-purple-100 focus:border-purple-600 font-black text-gray-700 transition-all uppercase"
               >
+                <option value="">TODAS AS TURMAS</option>
                 {turmas.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
               </select>
 
-              <div className="relative w-full sm:w-64">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
+              <div className="relative w-full sm:w-64 group">
+                <Search className={cn(
+                  "absolute left-4 top-1/2 transform -translate-y-1/2 w-3.5 h-3.5 transition-colors duration-300",
+                  search ? "text-purple-600" : "text-gray-400"
+                )} />
                 <input
                   type="text"
                   placeholder="BUSCAR NOME OU RA..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl text-[10px] focus:ring-4 focus:ring-purple-100 focus:border-purple-600 transition-all font-black uppercase tracking-widest"
+                  className="w-full pl-11 pr-10 py-3 bg-gray-50 border border-gray-100 rounded-2xl text-[10px] focus:ring-4 focus:ring-purple-100 focus:border-purple-600 focus:bg-white outline-none transition-all font-black uppercase tracking-widest placeholder:text-gray-300 shadow-sm"
                 />
+                {search && (
+                  <button
+                    onClick={() => setSearch('')}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 p-1 bg-gray-200 text-gray-500 rounded-full hover:bg-purple-100 hover:text-purple-600 transition-all shadow-sm"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
               </div>
             </div>
           </header>
@@ -196,6 +250,11 @@ export default function CarometroPage() {
                       )}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/10 to-transparent flex flex-col justify-end p-4">
                         <p className="text-white text-[10px] font-black uppercase tracking-tight truncate leading-none mb-1">{aluno.nomeCompleto}</p>
+                        {(search.length > 0 || !selectedTurma) && (
+                          <p className="text-purple-400 text-[8px] font-black tracking-widest truncate opacity-90 uppercase mb-1">
+                            {getTurmaNome(aluno.turmaId)}
+                          </p>
+                        )}
                         <p className="text-purple-300 text-[8px] font-black tracking-widest truncate opacity-80 uppercase">RA: {aluno.ra}</p>
                       </div>
                     </div>
@@ -203,12 +262,28 @@ export default function CarometroPage() {
                 ))}
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center h-full text-gray-400 py-20">
-                <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                  <User className="w-10 h-10 opacity-20" />
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex flex-col items-center justify-center min-h-[400px] text-gray-400"
+              >
+                <div className="w-24 h-24 bg-gray-100 rounded-[32px] flex items-center justify-center mb-6 shadow-inner">
+                  <Search className="w-10 h-10 text-gray-200" />
                 </div>
-                <p className="font-black text-gray-400 uppercase tracking-widest text-[10px]">Nenhum aluno encontrado</p>
-              </div>
+                <h3 className="text-gray-900 font-black uppercase tracking-tighter text-xl mb-2">Ops! Nada encontrado</h3>
+                <p className="font-bold text-gray-400 uppercase tracking-widest text-[9px] max-w-[200px] text-center leading-relaxed">
+                  Não encontramos nenhum aluno {search ? `chamado "${search}"` : 'na turma selecionada'}. 
+                  Tente outro termo ou turma.
+                </p>
+                {search && (
+                  <button
+                    onClick={() => setSearch('')}
+                    className="mt-6 px-6 py-3 bg-purple-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-purple-700 transition-all shadow-lg shadow-purple-100"
+                  >
+                    Limpar Busca
+                  </button>
+                )}
+              </motion.div>
             )}
           </div>
         </main>
@@ -237,8 +312,8 @@ export default function CarometroPage() {
                     <X className="w-6 h-6" />
                   </button>
 
-                  {/* Left Side: Photo (Large) */}
-                  <div className="w-full md:w-5/12 aspect-[4/5] md:aspect-auto bg-gray-900 relative">
+                  {/* Left Side: Photo (Small on mobile, large on desktop) */}
+                  <div className="w-full md:w-5/12 aspect-video md:aspect-auto bg-gray-900 relative">
                     {selectedAluno.fotoUrl ? (
                       <Image 
                         src={selectedAluno.fotoUrl} 
@@ -249,23 +324,20 @@ export default function CarometroPage() {
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-gray-700">
-                        <User className="w-32 h-32" />
+                        <User className="w-24 h-24 md:w-32 md:h-32" />
                       </div>
                     )}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent flex flex-col justify-end p-8 md:hidden">
-                      <h2 className="text-3xl font-black text-white uppercase tracking-tighter">{selectedAluno.nomeCompleto}</h2>
-                      <p className="text-purple-400 font-black text-xs uppercase tracking-widest mt-1">RA {selectedAluno.ra} • Nº {selectedAluno.numeroChamada || '-'}</p>
-                    </div>
                   </div>
 
                   {/* Right Side: Data */}
                   <div className="flex-1 flex flex-col bg-white overflow-hidden">
-                    <div className="flex-1 p-8 md:p-10 overflow-y-auto scrollbar-hide">
-                      <header className="hidden md:block mb-8">
-                        <h2 className="text-3xl font-black text-gray-900 uppercase tracking-tighter leading-none mb-4">{selectedAluno.nomeCompleto}</h2>
-                        <div className="flex gap-4 items-center">
-                          <span className="px-4 py-2 bg-purple-100 text-purple-700 rounded-2xl text-[10px] font-black uppercase tracking-widest">Nº {selectedAluno.numeroChamada || '-'}</span>
-                          <span className="text-gray-400 font-bold text-[10px] uppercase font-bold tracking-[0.2em]">RA {selectedAluno.ra}</span>
+                    <div className="flex-1 p-6 md:p-10 overflow-y-auto scrollbar-hide">
+                      <header className="mb-8">
+                        <h2 className="text-2xl md:text-3xl font-black text-gray-900 uppercase tracking-tighter leading-tight mb-4">{selectedAluno.nomeCompleto}</h2>
+                        <div className="flex gap-2 md:gap-4 items-center flex-wrap">
+                          <span className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest">{getTurmaNome(selectedAluno.turmaId)}</span>
+                          <span className="px-4 py-2 bg-purple-100 text-purple-700 rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest">Nº {selectedAluno.numeroChamada || '-'}</span>
+                          <span className="text-gray-400 font-bold text-[9px] md:text-[10px] uppercase tracking-[0.2em]">RA {selectedAluno.ra}</span>
                         </div>
                       </header>
 
@@ -279,6 +351,15 @@ export default function CarometroPage() {
                           <p className="text-gray-900 font-black tracking-tight">{selectedAluno.dataMatricula || 'Não informado'}</p>
                         </div>
                       </div>
+
+                      {selectedAluno.tutorId && (
+                        <div className="mb-8 p-4 bg-gray-50 rounded-[24px] border border-gray-100">
+                          <h4 className="text-[8px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1">Tutor</h4>
+                          <p className="text-gray-900 font-black text-sm uppercase tracking-tight">
+                            {usuarios[selectedAluno.tutorId] || 'Não encontrado'}
+                          </p>
+                        </div>
+                      )}
 
                       <div className="space-y-4 pt-6 border-t border-gray-100">
                         <div className="grid grid-cols-2 gap-4">

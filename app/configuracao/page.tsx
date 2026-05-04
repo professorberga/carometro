@@ -1,5 +1,5 @@
 'use client';
-  
+
 import Sidebar from '@/components/Sidebar';
 import MobileNav from '@/components/MobileNav';
 import ProtectedRoute from '@/components/ProtectedRoute';
@@ -40,7 +40,7 @@ export default function ConfiguracaoPage() {
       try {
         const snap = await getDocs(collection(db, 'usuarios'));
         if (!active) return;
-        const users = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
+        const users = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         users.sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
         setUserList(users);
       } catch (err) {
@@ -59,7 +59,7 @@ export default function ConfiguracaoPage() {
     setUserLoading(true);
     try {
       const snap = await getDocs(collection(db, 'usuarios'));
-      const users = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
+      const users = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       users.sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
       setUserList(users);
     } catch (err) {
