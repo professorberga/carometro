@@ -1,70 +1,33 @@
 {
   "entities": {
-    "Turma": {
-      "title": "Turma",
-      "description": "Uma turma escolar.",
-      "type": "object",
-      "properties": {
-        "nome": { "type": "string", "description": "Ex: 2º B" },
-        "serie": { "type": "string", "description": "Ex: 2º ano EM" },
-        "periodo": { "type": "string", "enum": ["Manhã", "Tarde", "Integral"] },
-        "anoLetivo": { "type": "number" },
-        "totalAlunos": { "type": "number" },
-        "criadoEm": { "type": "string", "format": "date-time" }
-      },
-      "required": ["nome", "serie", "periodo", "anoLetivo", "criadoEm"]
-    },
-    "Aluno": {
-      "title": "Aluno",
-      "description": "Dados de um aluno.",
+    "alunos": {
+      "title": "Alunos",
+      "description": "Estudantes da escola",
       "type": "object",
       "properties": {
         "nomeCompleto": { "type": "string" },
-        "ra": { "type": "string", "description": "Registro do Aluno (único)" },
-        "numeroChamada": { "type": "number", "description": "Número de chamada do aluno na turma" },
-        "dataNascimento": { "type": "string", "format": "date" },
-        "dataMatricula": { "type": "string", "format": "date" },
+        "ra": { "type": "string" },
         "turmaId": { "type": "string" },
         "fotoUrl": { "type": "string" },
-        "fotoPath": { "type": "string" },
-        "clubeJuvenil": { "type": "string" },
-        "clubeJuvenil2": { "type": "string", "description": "Clube Juvenil 2º semestre" },
-        "eletiva": { "type": "string" },
-        "eletiva2": { "type": "string", "description": "Eletiva 2º semestre" },
-        "tutorId": { "type": "string", "description": "ID do professor tutor" },
-        "observacoes": { "type": "string" },
-        "criadoEm": { "type": "string", "format": "date-time" },
-        "atualizadoEm": { "type": "string", "format": "date-time" }
+        "numeroChamada": { "type": "number" }
       },
-      "required": ["nomeCompleto", "ra", "turmaId", "criadoEm"]
+      "required": ["nomeCompleto", "ra", "turmaId"]
     },
-    "Usuario": {
-      "title": "Usuário",
-      "description": "Perfil de usuário do sistema.",
+    "turmas": {
+      "title": "Turmas",
+      "description": "Classes da escola",
       "type": "object",
       "properties": {
-        "uid": { "type": "string" },
-        "email": { "type": "string" },
         "nome": { "type": "string" },
-        "cargo": { "type": "string" },
-        "role": { "type": "string", "enum": ["gestor", "professor"] },
-        "criadoEm": { "type": "string", "format": "date-time" }
+        "segmento": { "type": "string" },
+        "periodo": { "type": "string" },
+        "ano": { "type": "string" }
       },
-      "required": ["uid", "email", "nome", "role", "criadoEm"]
+      "required": ["nome"]
     }
   },
   "firestore": {
-    "turmas": {
-      "schema": "Turma",
-      "description": "Coleção de turmas."
-    },
-    "alunos": {
-      "schema": "Aluno",
-      "description": "Coleção de alunos."
-    },
-    "usuarios": {
-      "schema": "Usuario",
-      "description": "Perfis de usuários."
-    }
+    "alunos": { "schema": "alunos", "description": "Coleção de alunos" },
+    "turmas": { "schema": "turmas", "description": "Coleção de turmas" }
   }
 }

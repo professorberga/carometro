@@ -1,6 +1,5 @@
 {
   "name": "Carômetro Escolar",
-  "description": "Sistema de identificação visual e gestão de alunos para escolas PEI/SEDUC-SP.",
-  "requestFramePermissions": [],
-  "majorCapabilities": []
+  "description": "Sistema de gestão e visualização de estudantes por turmas.",
+  "requestFramePermissions": ["camera"]
 }

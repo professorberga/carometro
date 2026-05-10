@@ -1,75 +1,68 @@
-'use client';
+"use client";
 
-import { useAuth } from '@/contexts/AuthContext';
-import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
-import { LogIn } from 'lucide-react';
-import { motion } from 'motion/react';
+import { useAuth } from "@/contexts/AuthContext";
+import { GraduationCap, ArrowRight } from "lucide-react";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function LoginPage() {
-  const { user, profile, login, loading } = useAuth();
+  const { user, signInWithGoogle, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (user && profile) {
-      if (profile.role === 'gestor') {
-        router.push('/dashboard');
-      } else {
-        router.push('/carometro');
-      }
+    if (user) {
+      router.push("/dashboard");
     }
-  }, [user, profile, router]);
+  }, [user, router]);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-600"></div>
-      </div>
-    );
-  }
+  if (loading) return null;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="max-w-md w-full space-y-8 bg-white p-10 rounded-2xl shadow-xl border border-gray-100"
-      >
-        <div className="text-center">
-          <h1 className="text-4xl font-extrabold text-purple-600 tracking-tight mb-2">
-            Carômetro<span className="text-gray-900 font-normal">Escolar</span>
+    <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
+      <div className="flex-1 p-12 flex flex-col justify-between">
+        <div className="flex items-center gap-2">
+          <div className="w-10 h-10 bg-purple-600 rounded-xl flex items-center justify-center">
+            <GraduationCap className="text-white w-6 h-6" />
+          </div>
+          <h1 className="text-xl font-black text-gray-900">
+            <span className="text-purple-600">Carômetro</span>Escolar
           </h1>
-          <p className="text-gray-500 text-lg">
-            Sistema de identificação visual institucional
-          </p>
         </div>
 
-        <div className="mt-8 space-y-6">
-          <p className="text-center text-sm text-gray-600">
-            Escolas PEI / SEDUC-SP
+        <div className="max-w-md">
+          <h2 className="text-6xl font-black text-gray-900 uppercase tracking-tighter leading-[0.9] mb-8">
+            Gestão Escolar <br />
+            <span className="text-purple-600">Visual e Moderna.</span>
+          </h2>
+          <p className="text-gray-500 font-bold text-lg mb-12 leading-relaxed">
+            Acompanhe seus alunos de forma rápida, intuitiva e segura com o Carômetro Escolar.
           </p>
-          
-          <button
-            onClick={login}
-            className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-xl text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all shadow-lg hover:shadow-purple-200"
-          >
-            <span className="absolute left-0 inset-y-0 flex items-center pl-3">
-              <LogIn className="h-5 w-5 text-purple-400 group-hover:text-purple-300" aria-hidden="true" />
-            </span>
-            Entrar com Google
-          </button>
 
-          <div className="text-center text-xs text-gray-400">
-            Apenas e-mails institucionais ou autorizados.
+          <button 
+            onClick={signInWithGoogle}
+            className="flex items-center gap-4 bg-gray-900 text-white px-10 py-6 rounded-[32px] font-black uppercase text-xs tracking-widest shadow-2xl hover:bg-purple-600 transition-all group"
+          >
+            Acessar com Google
+            <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+          </button>
+        </div>
+
+        <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+          &copy; 2024 Carômetro Escolar • Sistema de Gestão 
+        </div>
+      </div>
+
+      <div className="flex-1 bg-purple-600 relative overflow-hidden hidden md:block">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.2)_0%,transparent_50%)]"></div>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="grid grid-cols-3 gap-8 opacity-20 transform -rotate-12 scale-150">
+            {[1,2,3,4,5,6,7,8,9].map(i => (
+              <div key={i} className="w-32 h-40 bg-white rounded-3xl"></div>
+            ))}
           </div>
         </div>
-
-        <div className="pt-6 border-t border-gray-100 mt-8 text-center">
-          <p className="text-xs text-gray-400">
-            v1.0 · 2025 · Gestão Integrada
-          </p>
-        </div>
-      </motion.div>
+      </div>
     </div>
   );
 }

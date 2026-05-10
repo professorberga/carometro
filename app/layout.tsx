@@ -1,19 +1,20 @@
-import type { Metadata } from 'next';
-import { AuthProvider } from '@/contexts/AuthContext';
-import './globals.css';
+import type { Metadata } from "next";
+import "./globals.css";
 
 export const metadata: Metadata = {
-  title: 'Carômetro Escolar',
-  description: 'Sistema de identificação visual e gestão de alunos para escolas PEI/SEDUC-SP.',
+  title: "Carômetro Escolar",
+  description: "Sistema de gestão e carômetro escolar",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
     <html lang="pt-BR">
-      <body suppressHydrationWarning className="bg-gray-50 min-h-screen">
-        <AuthProvider>
-          {children}
-        </AuthProvider>
+      <body className="antialiased">
+        {children}
       </body>
     </html>
   );

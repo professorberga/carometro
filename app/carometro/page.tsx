@@ -1,22 +1,17 @@
-'use client';
+"use client";
 
-import Sidebar from '@/components/Sidebar';
-import MobileNav from '@/components/MobileNav';
-import ProtectedRoute from '@/components/ProtectedRoute';
-import { useState, useEffect, useCallback } from 'react';
-import { collection, getDocs, query, where, orderBy, deleteDoc, doc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { Search, Filter, User, X, Edit2, Trash2 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '@/lib/utils';
-import Link from 'next/link';
-import Image from 'next/image';
-import { useAuth } from '@/contexts/AuthContext';
-
-interface Turma {
-  id: string;
-  nome: string;
-}
+import { useEffect, useState, Suspense } from "react";
+import { collection, getDocs, query, where, orderBy } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { Sidebar } from "@/components/Sidebar";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { useSearchParams } from "next/navigation";
+import { Search, User, X, Edit2, Trash2, RotateCcw } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { doc, deleteDoc } from "firebase/firestore";
+import { useRouter } from "next/navigation";
+import Image from "next/image";
+import { cn } from "@/lib/utils";
 
 interface Aluno {
   id: string;
@@ -25,403 +20,267 @@ interface Aluno {
   numeroChamada?: number;
   turmaId: string;
   fotoUrl?: string;
-  clubeJuvenil?: string;
-  clubeJuvenil2?: string;
-  eletiva?: string;
-  eletiva2?: string;
-  tutorId?: string;
-  observacoes?: string;
-  dataNascimento?: string;
-  dataMatricula?: string;
 }
 
-export default function CarometroPage() {
-  const { profile } = useAuth();
+interface Turma {
+  id: string;
+  nome: string;
+}
+
+function CarometroContent() {
+  const searchParams = useSearchParams();
+  const initialTurma = searchParams.get("turmaId") || "";
+  const router = useRouter();
+  
   const [turmas, setTurmas] = useState<Turma[]>([]);
   const [usuarios, setUsuarios] = useState<Record<string, string>>({});
-  const [selectedTurma, setSelectedTurma] = useState<string>('');
+  const [selectedTurma, setSelectedTurma] = useState(initialTurma);
   const [alunos, setAlunos] = useState<Aluno[]>([]);
-  const [search, setSearch] = useState('');
-  const [selectedAluno, setSelectedAluno] = useState<Aluno | null>(null);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [selectedAluno, setSelectedAluno] = useState<Aluno | null>(null);
 
-  // Clear search on ESC
+  // Sync selectedTurma with query param when it changes
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && search) {
-        setSearch('');
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [search]);
+    const tid = searchParams.get("turmaId");
+    if (tid) setSelectedTurma(tid);
+  }, [searchParams]);
 
-  // Fetch turmas and usuarios
   useEffect(() => {
     async function fetchData() {
-      // Fetch users
-      const usersSnap = await getDocs(collection(db, 'usuarios'));
-      const usersMap: Record<string, string> = {};
+      const turmasSnap = await getDocs(collection(db, "turmas"));
+      setTurmas(turmasSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Turma)));
+      
+      const usersSnap = await getDocs(collection(db, "usuarios"));
+      const usersData: Record<string, string> = {};
       usersSnap.docs.forEach(doc => {
-        usersMap[doc.id] = doc.data().nome;
+        usersData[doc.id] = (doc.data() as any).nome;
       });
-      setUsuarios(usersMap);
-
-      const snap = await getDocs(query(collection(db, 'turmas'), orderBy('nome')));
-      const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Turma));
-      setTurmas(data);
-      if (data.length > 0) setSelectedTurma(data[0].id);
-      setLoading(false);
+      setUsuarios(usersData);
     }
     fetchData();
   }, []);
 
-  // Fetch alunos based on selected turma OR search
+  const deleteAluno = async (id: string) => {
+    if (confirm("Deseja realmente excluir este aluno?")) {
+      try {
+        await deleteDoc(doc(db, "alunos", id));
+        setAlunos(alunos.filter(a => a.id !== id));
+        setSelectedAluno(null);
+      } catch (error) {
+        console.error("Erro ao excluir aluno:", error);
+      }
+    }
+  };
+
   useEffect(() => {
-    let active = true;
-    
-    async function load() {
-      const isSearchActive = search.trim().length > 0;
-      
-      // If we don't have a search term and no turma is selected, we have nothing to show yet
-      // unless we want to default to "All Turmas". Let's default to "All Turmas" if selectedTurma is empty.
-      
+    async function fetchAlunos() {
       setLoading(true);
       try {
         let q;
-        if (isSearchActive || !selectedTurma) {
-          // If searching or "All Turmas" selected, fetch all students
-          q = query(collection(db, 'alunos'));
+        if (selectedTurma) {
+          q = query(collection(db, "alunos"), where("turmaId", "==", selectedTurma), orderBy("nomeCompleto", "asc"));
         } else {
-          // Fetch only the selected turma
-          q = query(collection(db, 'alunos'), where('turmaId', '==', selectedTurma));
+          q = query(collection(db, "alunos"), orderBy("nomeCompleto", "asc"));
         }
-
-        const snap = await getDocs(q);
-        if (!active) return;
-        const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Aluno));
         
-        // Sort
-        if (isSearchActive || !selectedTurma) {
-          // Sort by name for global lists
-          data.sort((a, b) => a.nomeCompleto.localeCompare(b.nomeCompleto));
-        } else {
-          // Sort by number of call for class lists
-          data.sort((a, b) => {
-            const numA = a.numeroChamada ?? 999;
-            const numB = b.numeroChamada ?? 999;
-            return numA - numB;
-          });
-        }
-
+        const snap = await getDocs(q);
+        const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Aluno));
         setAlunos(data);
       } catch (error) {
-        console.error("Error fetching alunos:", error);
+        console.error("Erro ao buscar alunos:", error);
       } finally {
-        if (active) setLoading(false);
+        setLoading(false);
       }
     }
-    
-    // Debounce search but not turma selection
-    const delay = search.length > 0 ? 500 : 0;
-    const timer = setTimeout(() => {
-      load();
-    }, delay);
-    
-    return () => { 
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [selectedTurma, search]);
 
-  const getTurmaNome = (id: string) => {
-    return turmas.find(t => t.id === id)?.nome || 'Turma...';
-  };
+    fetchAlunos();
+  }, [selectedTurma]);
 
-  const handleDelete = async (aluno: Aluno) => {
-    if (confirm(`Tem certeza que deseja excluir o aluno ${aluno.nomeCompleto}?`)) {
-      try {
-        await deleteDoc(doc(db, 'alunos', aluno.id));
-        setSelectedAluno(null);
-        // Deselecting and letting the effect re-run if needed, 
-        // but it won't re-run unless selectedTurma changes.
-        // So we manually refetch or remove from local state.
-        setAlunos(prev => prev.filter(a => a.id !== aluno.id));
-      } catch (error) {
-        console.error("Erro ao deletar aluno:", error);
-        alert("Erro ao deletar aluno. Verifique suas permissões.");
-      }
-    }
-  };
-
-  // Handle search and filtering
-  const filteredAlunos = search.length > 0 
-    ? alunos.filter(a => 
-        a.nomeCompleto.toLowerCase().includes(search.toLowerCase()) || a.ra.includes(search)
-      )
-    : alunos;
+  const filteredAlunos = alunos.filter(a => 
+    a.nomeCompleto.toLowerCase().includes(search.toLowerCase()) || 
+    a.ra.includes(search)
+  );
 
   return (
-    <ProtectedRoute>
-      <div className="flex h-screen bg-gray-50 flex-col md:flex-row">
-        <Sidebar />
-        <main className="flex-1 flex flex-col overflow-hidden pb-16 md:pb-0">
-          <header className="bg-white border-b border-gray-200 p-4 md:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 z-10 shadow-sm md:shadow-none">
-            <div className="flex justify-between items-center">
-              <div>
-                <h1 className="text-xl md:text-2xl font-black text-gray-900 leading-tight tracking-tighter uppercase">Carômetro</h1>
-                <p className="text-gray-500 text-[10px] uppercase font-bold tracking-widest">Acesso às fichas dos alunos</p>
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-2 md:gap-3 items-center">
-              <select
-                value={selectedTurma}
-                onChange={(e) => setSelectedTurma(e.target.value)}
-                className="w-full sm:w-40 md:w-48 p-2.5 bg-gray-50 border border-gray-100 rounded-2xl text-xs focus:ring-4 focus:ring-purple-100 focus:border-purple-600 font-black text-gray-700 transition-all uppercase"
-              >
-                <option value="">TODAS AS TURMAS</option>
-                {turmas.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
-              </select>
-
-              <div className="relative w-full sm:w-64 group">
-                <Search className={cn(
-                  "absolute left-4 top-1/2 transform -translate-y-1/2 w-3.5 h-3.5 transition-colors duration-300",
-                  search ? "text-purple-600" : "text-gray-400"
-                )} />
-                <input
-                  type="text"
-                  placeholder="BUSCAR NOME OU RA..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full pl-11 pr-10 py-3 bg-gray-50 border border-gray-100 rounded-2xl text-[10px] focus:ring-4 focus:ring-purple-100 focus:border-purple-600 focus:bg-white outline-none transition-all font-black uppercase tracking-widest placeholder:text-gray-300 shadow-sm"
-                />
-                {search && (
-                  <button
-                    onClick={() => setSearch('')}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 p-1 bg-gray-200 text-gray-500 rounded-full hover:bg-purple-100 hover:text-purple-600 transition-all shadow-sm"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                )}
-              </div>
-            </div>
-          </header>
-
-          <div className="flex-1 overflow-y-auto p-4 md:p-8">
-            {loading ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-8 animate-pulse">
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(i => (
-                  <div key={i} className="aspect-[4/5] bg-gray-100 rounded-[32px]"></div>
-                ))}
-              </div>
-            ) : filteredAlunos.length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-8">
-                {filteredAlunos.map((aluno) => (
-                  <motion.div
-                    layoutId={`aluno-${aluno.id}`}
-                    key={aluno.id}
-                    onClick={() => setSelectedAluno(aluno)}
-                    className={cn(
-                      "group relative bg-white rounded-[32px] overflow-hidden shadow-sm border border-gray-100 transition-all cursor-pointer hover:shadow-2xl hover:-translate-y-1",
-                      selectedAluno?.id === aluno.id ? "ring-4 ring-purple-100 border-purple-500" : ""
-                    )}
-                  >
-                    <div className="aspect-[4/5] relative bg-gray-100 overflow-hidden">
-                      {aluno.numeroChamada && (
-                        <div className="absolute top-3 left-3 z-10 bg-white/90 backdrop-blur-sm text-purple-600 w-7 h-7 rounded-xl flex items-center justify-center text-[10px] font-black shadow-lg">
-                          {aluno.numeroChamada}
-                        </div>
-                      )}
-                      {aluno.fotoUrl ? (
-                         <div className="relative w-full h-full">
-                          <Image 
-                            src={aluno.fotoUrl} 
-                            alt={aluno.nomeCompleto} 
-                            fill
-                            className="object-cover grayscale-[20%] group-hover:grayscale-0 transition-all duration-500 scale-105 group-hover:scale-110"
-                            referrerPolicy="no-referrer"
-                          />
-                        </div>
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-purple-50">
-                          <User className="w-16 h-16 text-purple-200" />
-                        </div>
-                      )}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/10 to-transparent flex flex-col justify-end p-4">
-                        <p className="text-white text-[10px] font-black uppercase tracking-tight truncate leading-none mb-1">{aluno.nomeCompleto}</p>
-                        {(search.length > 0 || !selectedTurma) && (
-                          <p className="text-purple-400 text-[8px] font-black tracking-widest truncate opacity-90 uppercase mb-1">
-                            {getTurmaNome(aluno.turmaId)}
-                          </p>
-                        )}
-                        <p className="text-purple-300 text-[8px] font-black tracking-widest truncate opacity-80 uppercase">RA: {aluno.ra}</p>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            ) : (
-              <motion.div 
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex flex-col items-center justify-center min-h-[400px] text-gray-400"
-              >
-                <div className="w-24 h-24 bg-gray-100 rounded-[32px] flex items-center justify-center mb-6 shadow-inner">
-                  <Search className="w-10 h-10 text-gray-200" />
-                </div>
-                <h3 className="text-gray-900 font-black uppercase tracking-tighter text-xl mb-2">Ops! Nada encontrado</h3>
-                <p className="font-bold text-gray-400 uppercase tracking-widest text-[9px] max-w-[200px] text-center leading-relaxed">
-                  Não encontramos nenhum aluno {search ? `chamado "${search}"` : 'na turma selecionada'}. 
-                  Tente outro termo ou turma.
-                </p>
-                {search && (
-                  <button
-                    onClick={() => setSearch('')}
-                    className="mt-6 px-6 py-3 bg-purple-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-purple-700 transition-all shadow-lg shadow-purple-100"
-                  >
-                    Limpar Busca
-                  </button>
-                )}
-              </motion.div>
-            )}
+    <div className="flex min-h-screen bg-gray-50">
+      <Sidebar />
+      
+      <main className="flex-1 p-8 flex flex-col">
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+          <div>
+            <h1 className="text-3xl font-black text-gray-900 uppercase tracking-tighter">Carômetro</h1>
+            <p className="text-gray-500 font-bold uppercase tracking-widest text-[10px] mt-1">Visualização rápida dos estudantes</p>
           </div>
-        </main>
 
-        <AnimatePresence>
-          {selectedAluno && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 md:p-6 pointer-events-none">
-              <motion.div 
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={() => setSelectedAluno(null)}
-                className="absolute inset-0 bg-gray-900/80 backdrop-blur-md pointer-events-auto"
+          <div className="flex flex-wrap gap-3 w-full md:w-auto">
+            <select
+              value={selectedTurma}
+              onChange={(e) => setSelectedTurma(e.target.value)}
+              className="bg-white border border-gray-100 px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest text-gray-700 focus:outline-none focus:ring-4 focus:ring-purple-100 transition-all"
+            >
+              <option value="">Todas as Turmas</option>
+              {turmas.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}
+            </select>
+
+            <div className="relative flex-1 md:flex-none md:w-64">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input 
+                type="text"
+                placeholder="BUSCAR NOME OU RA..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full bg-white border border-gray-100 pl-11 pr-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest focus:outline-none focus:ring-4 focus:ring-purple-100 transition-all"
               />
-                <motion.div
-                  layoutId={`aluno-${selectedAluno.id}`}
-                  initial={{ scale: 0.9, opacity: 0, y: 50 }}
-                  animate={{ scale: 1, opacity: 1, y: 0 }}
-                  exit={{ scale: 0.9, opacity: 0, y: 50 }}
-                  className="relative bg-white w-full h-full md:h-[min(700px,90vh)] md:max-w-5xl md:rounded-[40px] shadow-2xl overflow-hidden flex flex-col md:flex-row pointer-events-auto"
-                >
-                  <button 
-                    onClick={() => setSelectedAluno(null)}
-                    className="absolute top-6 right-6 z-[110] bg-white text-gray-900 md:bg-gray-100 md:text-gray-500 p-2 rounded-full hover:bg-gray-200 transition-colors shadow-lg"
-                  >
-                    <X className="w-6 h-6" />
-                  </button>
+            </div>
+          </div>
+        </header>
 
-                  {/* Left Side: Photo (Small on mobile, large on desktop) */}
-                  <div className="w-full md:w-5/12 aspect-video md:aspect-auto bg-gray-900 relative">
-                    {selectedAluno.fotoUrl ? (
+        <div className="flex-1">
+          {loading ? (
+             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+               {[1,2,3,4,5,6].map(i => (
+                 <div key={i} className="aspect-[3/4] bg-white rounded-3xl animate-pulse"></div>
+               ))}
+             </div>
+          ) : filteredAlunos.length > 0 ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+              {filteredAlunos.map(aluno => (
+                <div 
+                  key={aluno.id}
+                  onClick={() => setSelectedAluno(aluno)}
+                  className="group cursor-pointer bg-white rounded-[32px] overflow-hidden border border-gray-100 hover:shadow-2xl hover:-translate-y-2 transition-all relative"
+                >
+                  <div className="aspect-[3/4] relative">
+                    {aluno.fotoUrl ? (
                       <Image 
-                        src={selectedAluno.fotoUrl} 
-                        alt={selectedAluno.nomeCompleto} 
+                        src={aluno.fotoUrl} 
+                        alt={aluno.nomeCompleto} 
                         fill 
-                        className="object-cover" 
-                        referrerPolicy="no-referrer"
+                        className="object-cover"
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-gray-700">
-                        <User className="w-24 h-24 md:w-32 md:h-32" />
+                      <div className="w-full h-full bg-gray-50 flex items-center justify-center text-gray-200">
+                        <User className="w-12 h-12" />
                       </div>
                     )}
-                  </div>
-
-                  {/* Right Side: Data */}
-                  <div className="flex-1 flex flex-col bg-white overflow-hidden">
-                    <div className="flex-1 p-6 md:p-10 overflow-y-auto scrollbar-hide">
-                      <header className="mb-8">
-                        <h2 className="text-2xl md:text-3xl font-black text-gray-900 uppercase tracking-tighter leading-tight mb-4">{selectedAluno.nomeCompleto}</h2>
-                        <div className="flex gap-2 md:gap-4 items-center flex-wrap">
-                          <span className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest">{getTurmaNome(selectedAluno.turmaId)}</span>
-                          <span className="px-4 py-2 bg-purple-100 text-purple-700 rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest">Nº {selectedAluno.numeroChamada || '-'}</span>
-                          <span className="text-gray-400 font-bold text-[9px] md:text-[10px] uppercase tracking-[0.2em]">RA {selectedAluno.ra}</span>
-                        </div>
-                      </header>
-
-                      <div className="grid grid-cols-2 gap-8 mb-8">
-                        <div className="space-y-1">
-                          <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Aniversário</h4>
-                          <p className="text-gray-900 font-black tracking-tight">{selectedAluno.dataNascimento || 'Não informado'}</p>
-                        </div>
-                        <div className="space-y-1 text-right">
-                          <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Matrícula</h4>
-                          <p className="text-gray-900 font-black tracking-tight">{selectedAluno.dataMatricula || 'Não informado'}</p>
-                        </div>
-                      </div>
-
-                      {selectedAluno.tutorId && (
-                        <div className="mb-8 p-4 bg-gray-50 rounded-[24px] border border-gray-100">
-                          <h4 className="text-[8px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1">Tutor</h4>
-                          <p className="text-gray-900 font-black text-sm uppercase tracking-tight">
-                            {usuarios[selectedAluno.tutorId] || 'Não encontrado'}
-                          </p>
-                        </div>
-                      )}
-
-                      <div className="space-y-4 pt-6 border-t border-gray-100">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="p-4 bg-purple-50 rounded-[20px]">
-                            <h4 className="text-[8px] font-black text-purple-400 uppercase tracking-[0.2em] mb-2">Clube 01</h4>
-                            <p className="text-purple-900 font-black text-xs uppercase truncate tracking-tight">{selectedAluno.clubeJuvenil || '-'}</p>
-                          </div>
-                          <div className="p-4 bg-purple-50 rounded-[20px]">
-                            <h4 className="text-[8px] font-black text-purple-400 uppercase tracking-[0.2em] mb-2">Clube 02</h4>
-                            <p className="text-purple-900 font-black text-xs uppercase truncate tracking-tight">{selectedAluno.clubeJuvenil2 || '-'}</p>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="p-4 bg-indigo-50 rounded-[20px]">
-                            <h4 className="text-[8px] font-black text-indigo-400 uppercase tracking-[0.2em] mb-2">Eletiva 01</h4>
-                            <p className="text-indigo-900 font-black text-xs uppercase truncate tracking-tight">{selectedAluno.eletiva || '-'}</p>
-                          </div>
-                          <div className="p-4 bg-indigo-50 rounded-[20px]">
-                            <h4 className="text-[8px] font-black text-indigo-400 uppercase tracking-[0.2em] mb-2">Eletiva 02</h4>
-                            <p className="text-indigo-900 font-black text-xs uppercase truncate tracking-tight">{selectedAluno.eletiva2 || '-'}</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-8">
-                        <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-3 px-1">Observações</h4>
-                        <div className="p-5 bg-gray-50 rounded-[24px] border border-gray-100">
-                          <p className="text-gray-700 text-xs font-bold leading-relaxed italic">
-                            {selectedAluno.observacoes || 'Nenhuma observação registrada.'}
-                          </p>
-                        </div>
+                    
+                    <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    
+                    <div className="absolute bottom-0 left-0 right-0 p-4 transform translate-y-2 group-hover:translate-y-0 transition-transform">
+                      <div className="bg-white/90 backdrop-blur-md p-3 rounded-2xl shadow-xl">
+                        <p className="text-[10px] font-black text-gray-900 uppercase truncate leading-none mb-1">{aluno.nomeCompleto}</p>
+                        <p className="text-[8px] font-bold text-purple-600 uppercase tracking-widest truncate">RA {aluno.ra}</p>
                       </div>
                     </div>
-
-                    {profile?.role === 'gestor' && (
-                      <div className="p-8 md:p-10 border-t border-gray-100 flex flex-col sm:flex-row gap-4 bg-gray-50/50">
-                        <Link 
-                          href={`/alunos/${selectedAluno.id}/editar`}
-                          className="flex-1 flex items-center justify-center py-5 bg-purple-600 text-white rounded-[24px] font-black uppercase text-[10px] tracking-[0.2em] hover:bg-purple-700 transition-all shadow-xl shadow-purple-100"
-                        >
-                          <Edit2 className="w-4 h-4 mr-3" />
-                          Editar Ficha
-                        </Link>
-                        <button 
-                          onClick={() => handleDelete(selectedAluno)}
-                          className="flex items-center justify-center px-10 py-5 bg-red-50 text-red-600 rounded-[24px] font-black uppercase text-[10px] tracking-[0.2em] hover:bg-red-600 hover:text-white transition-all"
-                        >
-                          <Trash2 className="w-4 h-4 md:mr-0" />
-                          <span className="md:hidden ml-3">Excluir Aluno</span>
-                        </button>
-                      </div>
-                    )}
                   </div>
-                </motion.div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <div className="w-20 h-20 bg-gray-100 rounded-[32px] flex items-center justify-center text-gray-300 mb-4">
+                <Search className="w-8 h-8" />
+              </div>
+              <p className="text-gray-900 font-black uppercase text-xl tracking-tighter">Nenhum aluno encontrado</p>
+              <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest mt-2">Tente ajustar seu filtro de busca</p>
             </div>
           )}
-        </AnimatePresence>
+        </div>
+      </main>
 
-        <MobileNav />
-      </div>
-    </ProtectedRoute>
+      {/* Aluno Detail Modal */}
+      <AnimatePresence>
+        {selectedAluno && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white w-full max-w-4xl rounded-[48px] overflow-hidden shadow-2xl relative flex flex-col md:flex-row max-h-[90vh]"
+            >
+              <button 
+                onClick={() => setSelectedAluno(null)}
+                className="absolute top-6 right-6 p-3 bg-white/80 backdrop-blur-md rounded-2xl text-gray-900 hover:bg-purple-600 hover:text-white transition-all z-10 shadow-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="w-full md:w-5/12 aspect-square md:aspect-auto relative bg-gray-50">
+                {selectedAluno.fotoUrl ? (
+                  <Image src={selectedAluno.fotoUrl} alt={selectedAluno.nomeCompleto} fill className="object-cover" referrerPolicy="no-referrer" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-gray-100">
+                    <User className="w-32 h-32" />
+                  </div>
+                )}
+              </div>
+
+              <div className="flex-1 p-8 md:p-12 flex flex-col overflow-y-auto">
+                <header className="mb-8">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="px-4 py-2 bg-purple-50 text-purple-600 rounded-xl text-[10px] font-black uppercase tracking-widest">
+                      RA {selectedAluno.ra}
+                    </div>
+                    <div className="px-4 py-2 bg-gray-50 text-gray-400 rounded-xl text-[10px] font-black uppercase tracking-widest">
+                      #{selectedAluno.numeroChamada || '--'}
+                    </div>
+                  </div>
+                  <h2 className="text-4xl font-black text-gray-900 uppercase tracking-tighter leading-none mb-3">{selectedAluno.nomeCompleto}</h2>
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Estudante Ativo</p>
+                  </div>
+                </header>
+
+                <div className="grid grid-cols-2 gap-8 mb-8">
+                  <div className="space-y-1">
+                    <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Turma</h4>
+                    <p className="text-gray-900 font-black tracking-tight uppercase">{turmas.find(t => t.id === selectedAluno.turmaId)?.nome || "..."}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Segmento</h4>
+                    <p className="text-gray-900 font-black tracking-tight uppercase">Ensino Médio</p>
+                  </div>
+                </div>
+
+                <div className="mb-10 p-6 bg-amber-50/50 rounded-[32px] border border-amber-100/50">
+                  <h4 className="text-[10px] font-black text-amber-500 uppercase tracking-[0.2em] mb-2">Tutor Responsável</h4>
+                  <p className="text-gray-900 font-black text-lg uppercase tracking-tight">
+                    {(selectedAluno as any).tutorId ? (usuarios[(selectedAluno as any).tutorId] || 'Carregando...') : 'Não informado'}
+                  </p>
+                </div>
+
+                <div className="mt-auto flex gap-4 pt-10 border-t border-gray-100">
+                  <button 
+                    onClick={() => router.push(`/alunos/${selectedAluno.id}/editar`)}
+                    className="flex-1 flex items-center justify-center gap-3 bg-purple-600 text-white h-16 rounded-3xl font-black uppercase text-[10px] tracking-widest hover:bg-purple-700 transition-all shadow-xl shadow-purple-100"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                    Editar Ficha
+                  </button>
+                  <button 
+                    onClick={() => deleteAluno(selectedAluno.id)}
+                    className="w-16 h-16 flex items-center justify-center bg-red-50 text-red-500 rounded-3xl hover:bg-red-500 hover:text-white transition-all group shadow-sm"
+                  >
+                    <Trash2 className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
 
-
+export default function CarometroPage() {
+  return (
+    <ProtectedRoute>
+      <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Carregando...</div>}>
+        <CarometroContent />
+      </Suspense>
+    </ProtectedRoute>
+  );
+}
